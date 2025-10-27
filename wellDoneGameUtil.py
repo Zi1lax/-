@@ -66,6 +66,38 @@ def try_pick_item(game_widget, threshold=50):
                 found = True
                 break
 
+    # 3️⃣ ตรวจสอบ chopping_board_icons (ไอเทมบนเขียง)
+    if not found and hasattr(game_widget, "chopping_board_icons"):
+        for icon_label in list(game_widget.chopping_board_icons):
+            name = icon_label.property("item_name") or getattr(icon_label, "item_name", None)
+            if not name:
+                continue
+
+            icon_geom = icon_label.geometry()
+            icon_center = QtCore.QPoint(
+                icon_geom.x() + icon_geom.width() // 2,
+                icon_geom.y() + icon_geom.height() // 2
+            )
+            dx = chef_center.x() - icon_center.x()
+            dy = chef_center.y() - icon_center.y()
+            distance = (dx**2 + dy**2) ** 0.5
+
+            if distance <= threshold:
+                game_widget.has_item = True
+                game_widget.current_item = name
+                print(f"🔪 หยิบวัตถุดิบจากเขียง: {name}")
+
+                show_pick_feedback(game_widget, name)
+
+                # เอา icon ของวัตถุดิบบนเขียงออก
+                try:
+                    game_widget.chopping_board_icons.remove(icon_label)
+                except ValueError:
+                    pass
+                icon_label.deleteLater()
+                found = True
+                break
+
     if not found:
         print("❌ ไม่ได้อยู่ใกล้วัตถุดิบใด ๆ")
 
@@ -337,10 +369,57 @@ def add_item_to_plate(game_widget, item_name):
         return
 
     # เพิ่มของลงจาน
-    game_widget.plate_items.append(item_name)
-    print(f"🍽️ ใส่ {item_name} ลงจาน")
+    # เก็บของบน plate station (ไม่ใช่จานที่ถือ)
+    if not hasattr(game_widget, "station_plate_items"):
+        game_widget.station_plate_items = []
+    game_widget.station_plate_items.append(item_name)
+    print(f"🍽️ ใส่ {item_name} ลงจานที่ station: {game_widget.station_plate_items}")
 
-    update_plate_image(game_widget)
+    # อัปเดตรูปที่แสดงบน plate_station
+    try:
+        update_plate_image(game_widget, target_label=game_widget.plate_station, items=game_widget.station_plate_items)
+    except Exception:
+        pass
+
+
+def add_item_to_held_plate(game_widget, item_name):
+    """เพิ่มวัตถุดิบลงในจานที่ถืออยู่ (held_plate)"""
+    if not getattr(game_widget, "has_plate", False):
+        print("❌ ไม่มีจานในมือ")
+        return
+
+    if not hasattr(game_widget, "held_plate") or game_widget.held_plate is None:
+        print("❌ ไม่มี held_plate")
+        return
+
+    if not hasattr(game_widget, "plate_items"):
+        game_widget.plate_items = []
+
+    game_widget.plate_items.append(item_name)
+    print(f"🍽️ ใส่ {item_name} ลงจานที่ถืออยู่: {game_widget.plate_items}")
+
+    try:
+        update_plate_image(game_widget, target_label=game_widget.held_plate, items=game_widget.plate_items)
+    except Exception:
+        pass
+
+
+def add_item_to_dropped_plate(game_widget, plate_dict, item_name):
+    """เพิ่มวัตถุดิบลงในจานที่วางบนพื้น (plate_dict เหมือนใน dropped_plates)"""
+    lbl = plate_dict.get("label")
+    if lbl is None:
+        print("❌ plate label ไม่ถูกต้อง")
+        return
+
+    items = plate_dict.get("items", [])
+    items.append(item_name)
+    plate_dict["items"] = items
+    print(f"🍽️ ใส่ {item_name} ลงจานที่พื้น: {items}")
+
+    try:
+        update_plate_image(game_widget, target_label=lbl, items=items)
+    except Exception:
+        pass
 
 
 def update_plate_image(game_widget, target_label=None, items=None):
@@ -393,14 +472,22 @@ def try_pickup_plate(game_widget):
         if getattr(game_widget, "has_plate", False):
             print("⚠️ มีจานอยู่แล้ว")
             return
-
-        # ✅ หยิบจานใหม่จาก station
+        # ✅ หยิบจานใหม่จาก station (พร้อมของที่อยู่บน station ถ้ามี)
         game_widget.has_plate = True
         game_widget.current_item = "plate"
-        game_widget.plate_items = []
+
+        # ย้ายของจาก station ไปยัง plate_items
+        game_widget.plate_items = list(getattr(game_widget, "station_plate_items", []))
+        # ล้างของบน station
+        game_widget.station_plate_items = []
+        try:
+            # อัปเดตรูปบน station ให้เป็นจานเปล่า
+            update_plate_image(game_widget, target_label=game_widget.plate_station, items=[])
+        except Exception:
+            pass
 
         held_plate = QtWidgets.QLabel(game_widget)
-        img_path = os.path.join(SOURCE_PATH, "image", "plate.png")
+        img_path = os.path.join(SOURCE_PATH, "image", "plate_icon.png")
         if os.path.exists(img_path):
             held_plate.setPixmap(QtGui.QPixmap(img_path))
         held_plate.setScaledContents(True)
@@ -411,7 +498,13 @@ def try_pickup_plate(game_widget):
         update_plate_position(game_widget, game_widget.chef, held_plate)
         game_widget.held_plate = held_plate
 
-        print("✅ หยิบจานเรียบร้อย!")
+        # อัปเดตรูปของ held plate ให้แสดงของทั้งหมด
+        try:
+            update_plate_image(game_widget, target_label=held_plate, items=game_widget.plate_items)
+        except Exception:
+            pass
+
+        print(f"✅ หยิบจานเรียบร้อย! มีของ: {game_widget.plate_items}")
         return
 
     # 2️⃣ ตรวจ dropped_plates (จานที่วางพื้น)
@@ -544,6 +637,101 @@ def drop_plate(game_widget):
         game_widget.held_plate = None
 
     print("🧺 วางจานลงพื้นแล้ว")
+
+
+def try_serve_plate(game_widget, threshold=80):
+    """Serve a plate when near the serve station.
+
+    If holding a plate, serve it. If a dropped plate is near the serve station, serve it.
+    Serving increases the parent's score_label by 10 and removes the plate.
+    """
+    # must have serve_station
+    if not hasattr(game_widget, "serve_station"):
+        print("❌ ไม่มี serve_station ในเกม")
+        return False
+
+    chef_geom = game_widget.chef.geometry()
+    chef_center = QtCore.QPoint(
+        chef_geom.x() + chef_geom.width() // 2,
+        chef_geom.y() + chef_geom.height() // 2
+    )
+
+    serv_geom = game_widget.serve_station.geometry()
+    serv_center = QtCore.QPoint(
+        serv_geom.x() + serv_geom.width() // 2,
+        serv_geom.y() + serv_geom.height() // 2
+    )
+
+    dx = chef_center.x() - serv_center.x()
+    dy = chef_center.y() - serv_center.y()
+    distance = (dx**2 + dy**2) ** 0.5
+
+    if distance > threshold:
+        print("🚫 ยังไม่อยู่ใกล้จุดเสิร์ฟพอ")
+        return False
+
+    parent = game_widget.parent()
+
+    # If holding a plate, serve it
+    if getattr(game_widget, "has_plate", False):
+        print(f"✅ ให้บริการจาน: {getattr(game_widget, 'plate_items', [])}")
+        # increase score if available
+        if parent is not None and hasattr(parent, "score_label"):
+            try:
+                text = parent.score_label.text()
+                num = int(text.split(":")[-1].strip())
+            except Exception:
+                num = 0
+            num += 10
+            parent.score_label.setText(f"Score: {num}")
+
+        # remove held plate
+        if hasattr(game_widget, "held_plate") and game_widget.held_plate:
+            game_widget.held_plate.deleteLater()
+            game_widget.held_plate = None
+
+        game_widget.has_plate = False
+        game_widget.current_item = None
+        game_widget.plate_items = []
+        return True
+
+    # Otherwise, check dropped plates near serve station
+    if hasattr(game_widget, "dropped_plates"):
+        for plate_dict in list(game_widget.dropped_plates):
+            lbl = plate_dict.get("label")
+            if lbl is None:
+                continue
+
+            item_geom = lbl.geometry()
+            item_center = QtCore.QPoint(
+                item_geom.x() + item_geom.width() // 2,
+                item_geom.y() + item_geom.height() // 2
+            )
+            dx = serv_center.x() - item_center.x()
+            dy = serv_center.y() - item_center.y()
+            dist_item = (dx**2 + dy**2) ** 0.5
+
+            if dist_item <= threshold:
+                print(f"✅ ให้บริการจานจากพื้น: {plate_dict.get('items', [])}")
+                # increase score
+                if parent is not None and hasattr(parent, "score_label"):
+                    try:
+                        text = parent.score_label.text()
+                        num = int(text.split(":")[-1].strip())
+                    except Exception:
+                        num = 0
+                    num += 10
+                    parent.score_label.setText(f"Score: {num}")
+
+                lbl.deleteLater()
+                try:
+                    game_widget.dropped_plates.remove(plate_dict)
+                except Exception:
+                    pass
+                return True
+
+    print("❌ ไม่มีจานที่จะเสิร์ฟ")
+    return False
 
 def is_near_trash(game_widget, threshold=80):
     """

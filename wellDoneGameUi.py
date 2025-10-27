@@ -231,18 +231,38 @@ class GameWidget(QtWidgets.QWidget):
                     wdutil.try_throw_item_to_trash(self)
 
                 # ถ้าอยู่ใกล้จาน → ใส่วัตถุดิบลงจาน
+                # ถ้าอยู่ใกล้ plate station → ใส่ลงจานที่ station
+                elif hasattr(self, "plate_station") and wdutil.is_near_object(self.chef, self.plate_station):
+                    wdutil.add_item_to_plate(self, self.current_item)
+                    # ล้างของในมือ
+                    self.has_item = False
+                    self.current_item = None
+                    if getattr(self, "held_icon", None):
+                        self.held_icon.deleteLater()
+                        self.held_icon = None
+
                 elif getattr(self, "dropped_plates", None) and any(
                     wdutil.is_near_object(self.chef, plate_dict.get("label"))
                     for plate_dict in self.dropped_plates
                     if plate_dict.get("label") is not None
                 ):
-                    # หา plate ที่อยู่ใกล้ที่สุดและใส่ของลงไป
+                    # หา plate ที่อยู่ใกล้ที่สุดและใส่ของลงไปบนจานที่พื้น
                     for plate_dict in list(self.dropped_plates):
                         plate_label = plate_dict.get("label")
                         if plate_label and wdutil.is_near_object(self.chef, plate_label):
-                            wdutil.add_item_to_plate(self, self.current_item)
+                            wdutil.add_item_to_dropped_plate(self, plate_dict, self.current_item)
                             break
 
+                    # ล้างของในมือ
+                    self.has_item = False
+                    self.current_item = None
+                    if getattr(self, "held_icon", None):
+                        self.held_icon.deleteLater()
+                        self.held_icon = None
+
+                # ถ้าเราถือจานอยู่และถือวัตถุดิบด้วย → ใส่ลงในจานที่ถือ
+                elif getattr(self, "has_plate", False):
+                    wdutil.add_item_to_held_plate(self, self.current_item)
                     # ล้างของในมือ
                     self.has_item = False
                     self.current_item = None
@@ -259,6 +279,10 @@ class GameWidget(QtWidgets.QWidget):
                 # ถ้าอยู่ใกล้ถังขยะ → ทิ้งจาน
                 if wdutil.is_near_trash(self):
                     wdutil.throw_plate_to_trash(self)
+                # ถ้าอยู่ใกล้จุดเสิร์ฟ → เสิร์ฟจาน
+                elif wdutil.try_serve_plate(self):
+                    # เสิร์ฟเสร็จแล้ว ฟังก์ชันจะจัดการ state ให้
+                    return
                 else:
                     pass  # ยังไม่วาง (ใช้ปุ่ม G วางแทน)
 
