@@ -341,12 +341,32 @@ class Overlay(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setAlignment(QtCore.Qt.AlignCenter)
 
+แ        # Message shown in overlay (used for Pause and Game Over)
+        self.message_label = QtWidgets.QLabel("", self)
+        self.message_label.setStyleSheet("color: white; font-size: 34px; font-weight: bold;")
+        self.message_label.setAlignment(QtCore.Qt.AlignCenter)
+        layout.addWidget(self.message_label)
+
+        # Buttons area
         self.continue_btn = QtWidgets.QPushButton("Continue")
         self.quit_btn = QtWidgets.QPushButton("Quit")
         for btn in (self.continue_btn, self.quit_btn):
             btn.setFixedSize(150, 50)
             btn.setStyleSheet("font-size: 20px;")
             layout.addWidget(btn)
+
+        # state flag (True when overlay is showing game-over)
+        self.is_game_over = False
+
+    def set_paused(self):
+        self.is_game_over = False
+        self.message_label.setText("Paused")
+        self.continue_btn.setText("Continue")
+
+    def set_game_over(self, score):
+        self.is_game_over = True
+        self.message_label.setText(f"Game Over\nScore: {score}")
+        self.continue_btn.setText("Restart")
 
 
 class GamePage(QtWidgets.QWidget):
@@ -368,6 +388,19 @@ class GamePage(QtWidgets.QWidget):
         layout.addWidget(self.game_widget)
         # ให้ game widget ได้รับ focus เพื่อรับ key events (เช่น Space)
         self.game_widget.setFocus()
+
+        # Score / Time / Orders labels (create early so helpers can use them)
+        self.score_label = QtWidgets.QLabel("Score: 0", self)
+        self.score_label.setGeometry(10, 655, 150, 30)
+        self.score_label.setStyleSheet("font-size: 18px; background-color: white;")
+
+        self.time_label = QtWidgets.QLabel("Time: 120", self)
+        self.time_label.setGeometry(1150, 655, 150, 30)
+        self.time_label.setStyleSheet("font-size: 18px; background-color: white;")
+
+        self.order_label = QtWidgets.QLabel("Orders:", self)
+        self.order_label.setGeometry(10, 10, 400, 40)
+        self.order_label.setStyleSheet("font-size: 20px; background-color: white; text-align: center;")
 
         # Game clock
         self.remaining_time = 120
@@ -401,21 +434,10 @@ class GamePage(QtWidgets.QWidget):
         self.overlay = Overlay(self)
         self.overlay.setGeometry(0, 0, 1200, 675)
         self.overlay.hide()
-        self.overlay.continue_btn.clicked.connect(self.hide_overlay)
+    # connect to a handler that can decide between resume or restart
+    self.overlay.continue_btn.clicked.connect(self._overlay_continue_clicked)
         self.overlay.quit_btn.clicked.connect(self.back_to_menu)
-
-        # Score / Time
-        self.score_label = QtWidgets.QLabel("Score: 0", self)
-        self.score_label.setGeometry(10, 655, 150, 30)
-        self.score_label.setStyleSheet("font-size: 18px; background-color: white;")
-
-        self.time_label = QtWidgets.QLabel("Time: 120", self)
-        self.time_label.setGeometry(1150, 655, 150, 30)
-        self.time_label.setStyleSheet("font-size: 18px; background-color: white;")
-
-        self.order_label = QtWidgets.QLabel("Orders: 🍔 🍜 🍕", self)
-        self.order_label.setGeometry(10, 10, 200, 40)
-        self.order_label.setStyleSheet("font-size: 20px; background-color: white; text-align: center;")
+        
 
     def resizeEvent(self, event):
         self.bg_label.setGeometry(0, 0, self.width(), self.height())
@@ -438,6 +460,11 @@ class GamePage(QtWidgets.QWidget):
             pass
         try:
             self.game_widget.timer.stop()
+        except Exception:
+            pass
+        # Set overlay to paused mode and show
+        try:
+            self.overlay.set_paused()
         except Exception:
             pass
         self.overlay.show()
@@ -469,7 +496,134 @@ class GamePage(QtWidgets.QWidget):
                 self.game_widget.timer.stop()
             except Exception:
                 pass
+            # show game-over overlay with final score
+            try:
+                # parse numeric score from label
+                text = self.score_label.text()
+                score = int(text.split(":")[-1].strip())
+            except Exception:
+                score = 0
+            try:
+                self.overlay.set_game_over(score)
+            except Exception:
+                pass
             self.overlay.show()
+
+    def _overlay_continue_clicked(self):
+        """Called when overlay continue/restart button is clicked."
+        try:
+            if getattr(self.overlay, 'is_game_over', False):
+                self.restart_game()
+            else:
+                self.hide_overlay()
+        except Exception:
+            try:
+                self.hide_overlay()
+            except Exception:
+                pass
+
+    def restart_game(self):
+        """Reset game state to allow a fresh playthrough."""
+        # reset time and score
+        self.remaining_time = 120
+        self.time_label.setText(f"Time: {self.remaining_time}")
+        self.score_label.setText("Score: 0")
+
+        # clear items from the game widget
+        gw = self.game_widget
+        try:
+            for lbl in list(getattr(gw, 'placed_items', [])):
+                try:
+                    lbl.deleteLater()
+                except Exception:
+                    pass
+            gw.placed_items = []
+        except Exception:
+            gw.placed_items = []
+
+        try:
+            for lbl in list(getattr(gw, 'pot_icons', [])):
+                try:
+                    lbl.deleteLater()
+                except Exception:
+                    pass
+            gw.pot_icons = []
+            gw.pot_contents = []
+        except Exception:
+            gw.pot_icons = []
+            gw.pot_contents = []
+
+        try:
+            for lbl in list(getattr(gw, 'chopping_board_icons', [])):
+                try:
+                    lbl.deleteLater()
+                except Exception:
+                    pass
+            gw.chopping_board_icons = []
+        except Exception:
+            gw.chopping_board_icons = []
+
+        try:
+            for pd in list(getattr(gw, 'dropped_plates', [])):
+                try:
+                    lab = pd.get('label')
+                    if lab:
+                        lab.deleteLater()
+                except Exception:
+                    pass
+            gw.dropped_plates = []
+        except Exception:
+            gw.dropped_plates = []
+
+        try:
+            if getattr(gw, 'held_plate', None):
+                gw.held_plate.deleteLater()
+            gw.held_plate = None
+        except Exception:
+            gw.held_plate = None
+
+        try:
+            if getattr(gw, 'held_icon', None):
+                gw.held_icon.deleteLater()
+            gw.held_icon = None
+        except Exception:
+            gw.held_icon = None
+
+        gw.has_item = False
+        gw.current_item = None
+        gw.has_plate = False
+        gw.plate_items = []
+        gw.station_plate_items = []
+
+        # regenerate orders
+        try:
+            files = os.listdir(os.path.join(os.path.dirname(__file__), "source_image", "image"))
+            combos = [f[len("plate_"):-4] for f in files if f.startswith("plate_") and f.lower().endswith('.png')]
+        except Exception:
+            combos = []
+        if not combos:
+            combos = ["tomato_chopped", "lettuce_chopped", "cucamber_chopped"]
+        import random
+        self.orders = [random.choice(combos) for _ in range(3)]
+        self._refresh_orders_label()
+
+        # hide overlay and restart timers
+        try:
+            self.overlay.set_paused()
+        except Exception:
+            pass
+        try:
+            self.overlay.hide()
+        except Exception:
+            pass
+        try:
+            self.game_clock.start(1000)
+        except Exception:
+            pass
+        try:
+            self.game_widget.timer.start(16)
+        except Exception:
+            pass
 
     def _refresh_orders_label(self):
         # display orders nicely
