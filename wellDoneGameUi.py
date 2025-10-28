@@ -341,7 +341,7 @@ class Overlay(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setAlignment(QtCore.Qt.AlignCenter)
 
-แ        # Message shown in overlay (used for Pause and Game Over)
+        # Message shown in overlay (used for Pause and Game Over)
         self.message_label = QtWidgets.QLabel("", self)
         self.message_label.setStyleSheet("color: white; font-size: 34px; font-weight: bold;")
         self.message_label.setAlignment(QtCore.Qt.AlignCenter)
@@ -434,8 +434,8 @@ class GamePage(QtWidgets.QWidget):
         self.overlay = Overlay(self)
         self.overlay.setGeometry(0, 0, 1200, 675)
         self.overlay.hide()
-    # connect to a handler that can decide between resume or restart
-    self.overlay.continue_btn.clicked.connect(self._overlay_continue_clicked)
+        # connect to a handler that can decide between resume or restart
+        self.overlay.continue_btn.clicked.connect(self._overlay_continue_clicked)
         self.overlay.quit_btn.clicked.connect(self.back_to_menu)
         
 
@@ -510,7 +510,7 @@ class GamePage(QtWidgets.QWidget):
             self.overlay.show()
 
     def _overlay_continue_clicked(self):
-        """Called when overlay continue/restart button is clicked."
+        """Called when overlay continue/restart button is clicked."""
         try:
             if getattr(self.overlay, 'is_game_over', False):
                 self.restart_game()
