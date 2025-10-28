@@ -195,7 +195,7 @@ class GameWidget(QtWidgets.QWidget):
         self.chopping_board_icons = []
 
         # จุดเสิร์ฟ (serve)
-        self.create_image_object(1158, 163, 160, 229, "serve_station.png")
+        self.serve_station = self.create_image_object(1158, 163, 160, 229, "serve_station.png")
         self.plate_station = self.create_image_object(1167, 353, 100, 85, "plate_station.png")
         self.trash_bin = self.create_image_object(1045, 172, 90, 90, "trash_bin.png")
 
@@ -366,6 +366,30 @@ class GamePage(QtWidgets.QWidget):
 
         self.game_widget = GameWidget()
         layout.addWidget(self.game_widget)
+        # ให้ game widget ได้รับ focus เพื่อรับ key events (เช่น Space)
+        self.game_widget.setFocus()
+
+        # Game clock
+        self.remaining_time = 120
+        self.time_label.setText(f"Time: {self.remaining_time}")
+        self.game_clock = QtCore.QTimer(self)
+        self.game_clock.timeout.connect(self._tick_game_clock)
+        self.game_clock.start(1000)
+
+        # Orders: scan available plate combo images
+        try:
+            files = os.listdir(os.path.join(os.path.dirname(__file__), "source_image", "image"))
+            combos = [f[len("plate_"):-4] for f in files if f.startswith("plate_") and f.lower().endswith('.png')]
+        except Exception:
+            combos = []
+        if not combos:
+            combos = ["tomato_chopped", "lettuce_chopped", "cucamber_chopped"]
+
+        import random
+        # maintain a queue of 3 orders
+        self.orders = [random.choice(combos) for _ in range(3)]
+        self._refresh_orders_label()
+
 
         # ปุ่ม Pause
         self.pause_btn = QtWidgets.QPushButton("Pause", self)
@@ -398,11 +422,59 @@ class GamePage(QtWidgets.QWidget):
         self.overlay.setGeometry(0, 0, self.width(), self.height())
         super().resizeEvent(event)
 
+    def showEvent(self, event):
+        # เมื่อหน้า GamePage ปรากฎ ให้โฟกัสที่ game_widget เพื่อรับ key events (เช่น Space)
+        try:
+            self.game_widget.setFocus()
+        except Exception:
+            pass
+        super().showEvent(event)
+
     def show_overlay(self):
+        # pause game timers
+        try:
+            self.game_clock.stop()
+        except Exception:
+            pass
+        try:
+            self.game_widget.timer.stop()
+        except Exception:
+            pass
         self.overlay.show()
 
     def hide_overlay(self):
         self.overlay.hide()
+        # resume game timers
+        try:
+            self.game_clock.start(1000)
+        except Exception:
+            pass
+        try:
+            self.game_widget.timer.start(16)
+        except Exception:
+            pass
+
+    def _tick_game_clock(self):
+        self.remaining_time -= 1
+        if self.remaining_time < 0:
+            self.remaining_time = 0
+        self.time_label.setText(f"Time: {self.remaining_time}")
+        if self.remaining_time <= 0:
+            # time up -> show overlay and stop timers
+            try:
+                self.game_clock.stop()
+            except Exception:
+                pass
+            try:
+                self.game_widget.timer.stop()
+            except Exception:
+                pass
+            self.overlay.show()
+
+    def _refresh_orders_label(self):
+        # display orders nicely
+        disp = " | ".join(self.orders)
+        self.order_label.setText(f"Orders: {disp}")
 
     def back_to_menu(self):
         self.overlay.hide()

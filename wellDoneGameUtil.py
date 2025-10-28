@@ -682,7 +682,38 @@ def try_serve_plate(game_widget, threshold=80):
                 num = int(text.split(":")[-1].strip())
             except Exception:
                 num = 0
-            num += 10
+
+            # determine if served plate matches current order
+            served_items = list(getattr(game_widget, 'plate_items', []))
+            served_key = "_".join(sorted([s.replace('_chopped', '_chopped') for s in served_items]))
+            try:
+                current_order = parent.orders[0]
+            except Exception:
+                current_order = None
+
+            if current_order and served_key == current_order:
+                num += 20
+                print("🏆 เสิร์ฟตรงตามออร์เดอร์! +20")
+                # pop order and add a new random one
+                try:
+                    import random, os
+                    files = os.listdir(os.path.join(os.path.dirname(__file__), "source_image", "image"))
+                    combos = [f[len("plate_"):-4] for f in files if f.startswith("plate_") and f.lower().endswith('.png')]
+                except Exception:
+                    combos = []
+                if not combos:
+                    combos = ["tomato_chopped", "lettuce_chopped", "cucamber_chopped"]
+                try:
+                    parent.orders.pop(0)
+                    parent.orders.append(random.choice(combos))
+                    parent._refresh_orders_label()
+                except Exception:
+                    pass
+            else:
+                # served but not matching -> smaller reward or none
+                num += 0
+                print("⚠️ เสิร์ฟไม่ตรงออร์เดอร์")
+
             parent.score_label.setText(f"Score: {num}")
 
         # remove held plate
@@ -720,7 +751,36 @@ def try_serve_plate(game_widget, threshold=80):
                         num = int(text.split(":")[-1].strip())
                     except Exception:
                         num = 0
-                    num += 10
+
+                    # evaluate if plate matches current order
+                    items_served = list(plate_dict.get('items', []))
+                    served_key = "_".join(sorted(items_served))
+                    try:
+                        current_order = parent.orders[0]
+                    except Exception:
+                        current_order = None
+
+                    if current_order and served_key == current_order:
+                        num += 20
+                        print("🏆 เสิร์ฟตรงตามออร์เดอร์! +20")
+                        try:
+                            import random, os
+                            files = os.listdir(os.path.join(os.path.dirname(__file__), "source_image", "image"))
+                            combos = [f[len("plate_"):-4] for f in files if f.startswith("plate_") and f.lower().endswith('.png')]
+                        except Exception:
+                            combos = []
+                        if not combos:
+                            combos = ["tomato_chopped", "lettuce_chopped", "cucamber_chopped"]
+                        try:
+                            parent.orders.pop(0)
+                            parent.orders.append(random.choice(combos))
+                            parent._refresh_orders_label()
+                        except Exception:
+                            pass
+                    else:
+                        num += 0
+                        print("⚠️ เสิร์ฟไม่ตรงออร์เดอร์")
+
                     parent.score_label.setText(f"Score: {num}")
 
                 lbl.deleteLater()
