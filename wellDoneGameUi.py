@@ -403,7 +403,7 @@ class GamePage(QtWidgets.QWidget):
         self.order_label.setStyleSheet("font-size: 20px; background-color: white; text-align: center;")
 
         # Game clock
-        self.remaining_time = 120
+        self.remaining_time = 50
         self.time_label.setText(f"Time: {self.remaining_time}")
         self.game_clock = QtCore.QTimer(self)
         self.game_clock.timeout.connect(self._tick_game_clock)
