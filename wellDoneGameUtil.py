@@ -274,19 +274,97 @@ def drop_item(game_widget):
 
 # ------------------- หั่น -------------------
 def process_space_action(game_widget):
-    for icon_label in game_widget.chopping_board_icons:
-        # สมมติเราจำชื่อใน property name
-        chopped_name = icon_label.property("item_name")
-        if not chopped_name:
+    """Start a chopping action that takes 3 seconds on the nearest chopping-board icon.
+
+    If a chop is already in progress (game_widget.is_chopping), this call is ignored.
+    """
+    # ignore if already chopping
+    if getattr(game_widget, 'is_chopping', False):
+        print("⏳ กำลังหั่นอยู่ โปรดรอ")
+        return
+
+    # find nearest chopping_board icon to the chef
+    if not hasattr(game_widget, 'chopping_board_icons') or not game_widget.chopping_board_icons:
+        print("🔪 ไม่มีของบนเขียงให้หั่น")
+        return
+
+    chef_geom = game_widget.chef.geometry()
+    chef_center = QtCore.QPoint(
+        chef_geom.x() + chef_geom.width() // 2,
+        chef_geom.y() + chef_geom.height() // 2
+    )
+
+    nearest = None
+    nearest_dist = None
+    for icon_label in list(game_widget.chopping_board_icons):
+        try:
+            icon_geom = icon_label.geometry()
+        except Exception:
             continue
-        chopped_name = f"{chopped_name}_chopped"
-        pix_path = os.path.join(SOURCE_PATH, "image", f"{chopped_name}_icon.png")
-        pix = QtGui.QPixmap(pix_path)
-        if not pix.isNull():
-            icon_label.setPixmap(pix)
-            icon_label.setScaledContents(True)
-            icon_label.setProperty("item_name", chopped_name)
-            print(f"✅ หั่นวัตถุดิบ: {chopped_name}")
+        icon_center = QtCore.QPoint(
+            icon_geom.x() + icon_geom.width() // 2,
+            icon_geom.y() + icon_geom.height() // 2
+        )
+        dx = chef_center.x() - icon_center.x()
+        dy = chef_center.y() - icon_center.y()
+        dist = (dx**2 + dy**2) ** 0.5
+        if nearest is None or dist < nearest_dist:
+            nearest = icon_label
+            nearest_dist = dist
+
+    if nearest is None:
+        print("🔪 ไม่พบไอเทมบนเขียง")
+        return
+
+    # require reasonable proximity (use 80 px)
+    if nearest_dist is None or nearest_dist > 120:
+        print(f"🚫 ไกลเกินไป (ระยะ {int(nearest_dist or 999)})")
+        return
+
+    # start chopping
+    game_widget.is_chopping = True
+    target = nearest
+    try:
+        orig_name = target.property('item_name') or getattr(target, 'item_name', None)
+    except Exception:
+        orig_name = None
+
+    print(f"🔪 เริ่มหั่น {orig_name} — ใช้เวลา 3 วินาที")
+
+    def _finish_chop():
+        try:
+            if not getattr(game_widget, 'chopping_board_icons', None):
+                return
+            # target may have been deleted — check
+            if target not in game_widget.chopping_board_icons:
+                # maybe it was picked up or removed
+                return
+            name = target.property('item_name') or getattr(target, 'item_name', None)
+            if not name:
+                return
+            # don't append _chopped twice
+            if name.endswith('_chopped'):
+                print(f"ℹ️ {name} ถูกหั่นแล้ว")
+                return
+            chopped_name = f"{name}_chopped"
+            pix_path = os.path.join(SOURCE_PATH, "image", f"{chopped_name}_icon.png")
+            pix = QtGui.QPixmap(pix_path)
+            if not pix.isNull():
+                target.setPixmap(pix)
+                target.setScaledContents(True)
+                target.setProperty('item_name', chopped_name)
+                try:
+                    target.item_name = chopped_name
+                except Exception:
+                    pass
+                print(f"✅ หั่นวัตถุดิบเสร็จ: {chopped_name}")
+        except Exception:
+            pass
+        finally:
+            game_widget.is_chopping = False
+
+    # 3 seconds delay
+    QtCore.QTimer.singleShot(3000, _finish_chop)
 
 # ------------------- ทิ้งของลงถังขยะ ------------------
 
